@@ -102,3 +102,43 @@ def spot_checkpoint_cost(
         "on_demand_cost": round(on_demand_cost, 2),
         "savings_pct": round(savings_pct, 1),
     }
+
+
+def cache_is_worth_it(
+    avg_reads: float,
+    write_cost: float = 1.25,
+    read_discount: float = 0.10,
+) -> bool:
+    """Return True if prompt caching is economically justified.
+
+    The cache write costs *more* than a regular read (typically 1.25x); subsequent
+    cache-hits come at `read_discount` (10% of full price).  Break-even:
+
+        write_cost * P == avg_reads * read_discount * P
+        =>  avg_reads >= write_cost / read_discount
+
+    With defaults (write=1.25x, read=0.10x):  break-even at 12.5 reads.
+    If avg_reads < break_even the cache *costs* more than re-tokenising every time.
+
+    Args:
+        avg_reads:      Average number of cache-read hits per cached write.
+        write_cost:     Write price as a multiplier of the normal input token price
+                        (Anthropic: 1.25x; OpenAI: 1.0x; defaults 1.25).
+        read_discount:  Cache-hit price as a fraction of the normal input token price
+                        (Anthropic: 0.10; OpenAI: 0.50; defaults 0.10).
+
+    Returns:
+        True  → cache saves money (avg_reads >= break-even)
+        False → cache costs more than naive re-tokenisation
+    """
+    if read_discount <= 0 or read_discount >= 1:
+        raise ValueError("read_discount must be in (0, 1)")
+    break_even = write_cost / read_discount
+    return avg_reads >= break_even
+
+
+def cache_break_even_reads(write_cost: float = 1.25, read_discount: float = 0.10) -> float:
+    """Return the minimum avg_reads for caching to be cost-neutral."""
+    if read_discount <= 0:
+        return float("inf")
+    return write_cost / read_discount

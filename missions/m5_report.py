@@ -22,37 +22,43 @@ def run(verbose: bool = True) -> dict:
     cat = catalog_by_type()
 
     # --- buckets ---
-    infer_savings = (r2["baseline_daily"] - r2["optimized_daily"]) * DAYS
+    infer_savings     = (r2["baseline_daily"] - r2["optimized_daily"]) * DAYS
     purchasing_savings = r3["on_demand_monthly"] - r3["optimized_monthly"]
 
-    idle_savings = r1["idle_waste_daily"] * DAYS
-    rightsize_savings = 0.0
+    idle_savings       = r1["idle_waste_daily"] * DAYS
+    rightsize_savings  = 0.0
     for lie in r1["lies"]:
-        cur = lie["gpu_type"]
-        tgt = RIGHTSIZE_MAP.get(cur, cur)
+        cur  = lie["gpu_type"]
+        tgt  = RIGHTSIZE_MAP.get(cur, cur)
         delta = num(cat[cur]["on_demand_hr"]) - num(cat[tgt]["on_demand_hr"])
         rightsize_savings += max(0.0, delta) * 24 * DAYS
 
     levers = {
         "Inference (cascade/cache/batch)": round(infer_savings),
-        "Purchasing (spot/reserved)": round(purchasing_savings),
-        "Right-size util-lies": round(rightsize_savings),
-        "Kill idle GPUs": round(idle_savings),
+        "Purchasing (spot/reserved)":      round(purchasing_savings),
+        "Right-size util-lies":            round(rightsize_savings),
+        "Kill idle GPUs":                  round(idle_savings),
     }
-    baseline = r2["baseline_daily"] * DAYS + r3["on_demand_monthly"]
-    optimized = baseline - sum(levers.values())
-    total_pct = sum(levers.values()) / baseline * 100 if baseline else 0.0
+    baseline   = r2["baseline_daily"] * DAYS + r3["on_demand_monthly"]
+    optimized  = baseline - sum(levers.values())
+    total_pct  = sum(levers.values()) / baseline * 100 if baseline else 0.0
 
     # --- sustainability snapshot ---
     median_tokens = 800
-    wh = sustainability.wh_per_query(median_tokens)
+    wh   = sustainability.wh_per_query(median_tokens)
     sust = {
         "wh_per_query": wh,
-        "carbon_g": sustainability.carbon_g(wh, "us-east-1"),
-        "best_region": min(sustainability.REGION_CARBON, key=sustainability.REGION_CARBON.get),
+        "carbon_g":     sustainability.carbon_g(wh, "us-east-1"),
+        "best_region":  min(sustainability.REGION_CARBON, key=sustainability.REGION_CARBON.get),
     }
 
-    md = report.build_report(baseline, optimized, levers, sustainability=sust)
+    md = report.build_report(
+        baseline, optimized, levers,
+        sustainability=sust,
+        m1_data=r1,
+        m2_data=r2,
+        m3_data=r3,
+    )
     out_md = os.path.join(ROOT, "outputs", "report.md")
     os.makedirs(os.path.dirname(out_md), exist_ok=True)
     with open(out_md, "w") as f:
